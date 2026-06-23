@@ -8,12 +8,14 @@ const PLAYER_COLORS = [
   { name: "黄", color: "#fbc02d" },
   { name: "緑", color: "#43a047" },
 ];
-const TURN_TIME = 15;
+
+const DEFAULT_TURN_TIME = 15;
 const TURN_TIME_OPTIONS = [10, 15, 20, 30];
 
 export default function Home() {
   const [playerCount, setPlayerCount] = useState(4);
-  const [turnTimeLeft, setTurnTimeLeft] = useState(TURN_TIME);
+  const [turnTime, setTurnTime] = useState(DEFAULT_TURN_TIME);
+  const [turnTimeLeft, setTurnTimeLeft] = useState(DEFAULT_TURN_TIME);
   const [currentPlayer, setCurrentPlayer] = useState(0);
   const [scores, setScores] = useState([0, 0, 0, 0]);
   const [eliminated, setEliminated] = useState([false, false, false, false]);
@@ -57,7 +59,7 @@ export default function Home() {
             }
 
             setCurrentPlayer(findNextPlayer(currentPlayer, nextEliminated));
-            setTurnTimeLeft(TURN_TIME);
+            setTurnTimeLeft(turnTime);
 
             return nextEliminated;
           });
@@ -70,7 +72,7 @@ export default function Home() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [running, currentPlayer, winner, playerCount, eliminated]);
+  }, [running, currentPlayer, winner, playerCount, eliminated, turnTime]);
 
   const vibrate = () => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -78,9 +80,10 @@ export default function Home() {
     }
   };
 
-  const resetGame = (count = playerCount) => {
+  const resetGame = (count = playerCount, time = turnTime) => {
     setPlayerCount(count);
-    setTurnTimeLeft(TURN_TIME);
+    setTurnTime(time);
+    setTurnTimeLeft(time);
     setCurrentPlayer(0);
     setScores(Array(count).fill(0));
     setEliminated(Array(count).fill(false));
@@ -90,7 +93,11 @@ export default function Home() {
   };
 
   const changePlayerCount = (count: number) => {
-    resetGame(count);
+    resetGame(count, turnTime);
+  };
+
+  const changeTurnTime = (time: number) => {
+    resetGame(playerCount, time);
   };
 
   const pressButton = () => {
@@ -110,7 +117,7 @@ export default function Home() {
     });
 
     setCurrentPlayer(findNextPlayer(currentPlayer));
-    setTurnTimeLeft(TURN_TIME);
+    setTurnTimeLeft(turnTime);
   };
 
   const current = players[currentPlayer];
@@ -132,6 +139,24 @@ export default function Home() {
                 }}
               >
                 {count}人
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={styles.selectGroup}>
+          <div style={styles.label}>1ターンの時間</div>
+          <div style={styles.buttonRow}>
+            {TURN_TIME_OPTIONS.map((time) => (
+              <button
+                key={time}
+                onClick={() => changeTurnTime(time)}
+                style={{
+                  ...styles.selectButton,
+                  ...(turnTime === time ? styles.selectButtonActive : {}),
+                }}
+              >
+                {time}秒
               </button>
             ))}
           </div>
@@ -242,6 +267,8 @@ const styles: Record<string, React.CSSProperties> = {
   buttonRow: {
     display: "flex",
     gap: 10,
+    flexWrap: "wrap",
+    justifyContent: "center",
   },
 
   selectButton: {
