@@ -8,7 +8,7 @@ const PLAYER_COLORS = [
   { name: "黄", color: "#fbc02d" },
   { name: "緑", color: "#43a047" },
 ];
-
+const TURN_TIME = 15;
 const TURN_TIME_OPTIONS = [10, 15, 20, 30];
 
 export default function Home() {
