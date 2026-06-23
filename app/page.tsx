@@ -10,7 +10,7 @@ const PLAYER_COLORS = [
 ];
 
 const DEFAULT_TURN_TIME = 15;
-const TURN_TIME_OPTIONS = [10, 15, 20, 30, 45];
+const TURN_TIME_OPTIONS = [20, 30, 45];
 export default function Home() {
   const [playerCount, setPlayerCount] = useState(4);
   const [turnTime, setTurnTime] = useState(DEFAULT_TURN_TIME);
