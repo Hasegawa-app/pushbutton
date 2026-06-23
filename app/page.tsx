@@ -9,12 +9,11 @@ const PLAYER_COLORS = [
   { name: "緑", color: "#43a047" },
 ];
 
-const TIME_OPTIONS = [1, 3, 5];
+const TURN_TIME_OPTIONS = [10, 15, 20, 30];
 
 export default function Home() {
   const [playerCount, setPlayerCount] = useState(4);
-  const [timeLimit, setTimeLimit] = useState(3);
-  const [times, setTimes] = useState([180, 180, 180, 180]);
+  const [turnTimeLeft, setTurnTimeLeft] = useState(TURN_TIME);
   const [currentPlayer, setCurrentPlayer] = useState(0);
   const [scores, setScores] = useState([0, 0, 0, 0]);
   const [eliminated, setEliminated] = useState([false, false, false, false]);
@@ -32,36 +31,41 @@ export default function Home() {
     return from;
   };
 
+  const getAlivePlayers = (eliminatedList = eliminated) => {
+    return eliminatedList
+      .slice(0, playerCount)
+      .map((isOut, i) => (!isOut ? i : null))
+      .filter((v): v is number => v !== null);
+  };
+
   useEffect(() => {
     if (!running || winner !== null) return;
 
     const timer = setInterval(() => {
-      setTimes((prev) => {
-        const nextTimes = [...prev];
-        nextTimes[currentPlayer] = Math.max(0, nextTimes[currentPlayer] - 1);
-
-        if (nextTimes[currentPlayer] <= 0) {
+      setTurnTimeLeft((prev) => {
+        if (prev <= 1) {
           setEliminated((prevEliminated) => {
             const nextEliminated = [...prevEliminated];
             nextEliminated[currentPlayer] = true;
 
-            const alive = nextEliminated
-              .slice(0, playerCount)
-              .map((isOut, i) => (!isOut ? i : null))
-              .filter((v): v is number => v !== null);
+            const alive = getAlivePlayers(nextEliminated);
 
             if (alive.length === 1) {
               setWinner(alive[0]);
               setRunning(false);
-            } else {
-              setCurrentPlayer(findNextPlayer(currentPlayer, nextEliminated));
+              return nextEliminated;
             }
+
+            setCurrentPlayer(findNextPlayer(currentPlayer, nextEliminated));
+            setTurnTimeLeft(TURN_TIME);
 
             return nextEliminated;
           });
+
+          return 0;
         }
 
-        return nextTimes;
+        return prev - 1;
       });
     }, 1000);
 
@@ -74,10 +78,9 @@ export default function Home() {
     }
   };
 
-  const resetGame = (count = playerCount, limit = timeLimit) => {
-    const seconds = limit * 60;
-
-    setTimes(Array(count).fill(seconds));
+  const resetGame = (count = playerCount) => {
+    setPlayerCount(count);
+    setTurnTimeLeft(TURN_TIME);
     setCurrentPlayer(0);
     setScores(Array(count).fill(0));
     setEliminated(Array(count).fill(false));
@@ -87,13 +90,7 @@ export default function Home() {
   };
 
   const changePlayerCount = (count: number) => {
-    setPlayerCount(count);
-    resetGame(count, timeLimit);
-  };
-
-  const changeTimeLimit = (limit: number) => {
-    setTimeLimit(limit);
-    resetGame(playerCount, limit);
+    resetGame(count);
   };
 
   const pressButton = () => {
@@ -113,12 +110,7 @@ export default function Home() {
     });
 
     setCurrentPlayer(findNextPlayer(currentPlayer));
-  };
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
+    setTurnTimeLeft(TURN_TIME);
   };
 
   const current = players[currentPlayer];
@@ -144,24 +136,6 @@ export default function Home() {
             ))}
           </div>
         </div>
-
-        <div style={styles.selectGroup}>
-          <div style={styles.label}>持ち時間</div>
-          <div style={styles.buttonRow}>
-            {TIME_OPTIONS.map((limit) => (
-              <button
-                key={limit}
-                onClick={() => changeTimeLimit(limit)}
-                style={{
-                  ...styles.selectButton,
-                  ...(timeLimit === limit ? styles.selectButtonActive : {}),
-                }}
-              >
-                {limit}分
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {winner === null ? (
@@ -176,7 +150,7 @@ export default function Home() {
             現在：{current.name}プレイヤー
           </div>
 
-          <div style={styles.currentTimer}>{formatTime(times[currentPlayer])}</div>
+          <div style={styles.currentTimer}>{turnTimeLeft}</div>
         </>
       ) : (
         <div
@@ -221,7 +195,6 @@ export default function Home() {
               {player.name}
               {eliminated[i] && " 脱落"}
             </div>
-            <div style={styles.playerTime}>{formatTime(times[i])}</div>
             <strong>{scores[i]}駅</strong>
           </div>
         ))}
@@ -294,7 +267,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   currentTimer: {
-    fontSize: 72,
+    fontSize: 96,
     fontWeight: "bold",
   },
 
@@ -341,12 +314,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   playerName: {
     fontWeight: "bold",
-  },
-
-  playerTime: {
-    fontSize: 28,
-    fontWeight: "bold",
-    margin: "6px 0",
+    marginBottom: 8,
   },
 
   resetButton: {
