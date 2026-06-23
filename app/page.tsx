@@ -13,24 +13,60 @@ const TIME_OPTIONS = [1, 3, 5];
 
 export default function Home() {
   const [playerCount, setPlayerCount] = useState(4);
-  const [timeLimit, setTimeLimit] = useState(5);
-  const [timeLeft, setTimeLeft] = useState(timeLimit * 60);
+  const [timeLimit, setTimeLimit] = useState(3);
+  const [times, setTimes] = useState([180, 180, 180, 180]);
   const [currentPlayer, setCurrentPlayer] = useState(0);
   const [scores, setScores] = useState([0, 0, 0, 0]);
+  const [eliminated, setEliminated] = useState([false, false, false, false]);
   const [running, setRunning] = useState(false);
   const [pressed, setPressed] = useState(false);
+  const [winner, setWinner] = useState<number | null>(null);
 
   const players = PLAYER_COLORS.slice(0, playerCount);
 
+  const findNextPlayer = (from: number, eliminatedList = eliminated) => {
+    for (let i = 1; i <= playerCount; i++) {
+      const next = (from + i) % playerCount;
+      if (!eliminatedList[next]) return next;
+    }
+    return from;
+  };
+
   useEffect(() => {
-    if (!running || timeLeft <= 0) return;
+    if (!running || winner !== null) return;
 
     const timer = setInterval(() => {
-      setTimeLeft((t) => Math.max(0, t - 1));
+      setTimes((prev) => {
+        const nextTimes = [...prev];
+        nextTimes[currentPlayer] = Math.max(0, nextTimes[currentPlayer] - 1);
+
+        if (nextTimes[currentPlayer] <= 0) {
+          setEliminated((prevEliminated) => {
+            const nextEliminated = [...prevEliminated];
+            nextEliminated[currentPlayer] = true;
+
+            const alive = nextEliminated
+              .slice(0, playerCount)
+              .map((isOut, i) => (!isOut ? i : null))
+              .filter((v): v is number => v !== null);
+
+            if (alive.length === 1) {
+              setWinner(alive[0]);
+              setRunning(false);
+            } else {
+              setCurrentPlayer(findNextPlayer(currentPlayer, nextEliminated));
+            }
+
+            return nextEliminated;
+          });
+        }
+
+        return nextTimes;
+      });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [running, timeLeft]);
+  }, [running, currentPlayer, winner, playerCount, eliminated]);
 
   const vibrate = () => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
@@ -39,11 +75,15 @@ export default function Home() {
   };
 
   const resetGame = (count = playerCount, limit = timeLimit) => {
-    setTimeLeft(limit * 60);
+    const seconds = limit * 60;
+
+    setTimes(Array(count).fill(seconds));
     setCurrentPlayer(0);
     setScores(Array(count).fill(0));
+    setEliminated(Array(count).fill(false));
     setRunning(false);
     setPressed(false);
+    setWinner(null);
   };
 
   const changePlayerCount = (count: number) => {
@@ -57,7 +97,7 @@ export default function Home() {
   };
 
   const pressButton = () => {
-    if (timeLeft <= 0) return;
+    if (winner !== null || eliminated[currentPlayer]) return;
 
     vibrate();
 
@@ -72,14 +112,17 @@ export default function Home() {
       return next;
     });
 
-    setCurrentPlayer((p) => (p + 1) % playerCount);
+    setCurrentPlayer(findNextPlayer(currentPlayer));
   };
 
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
-  const currentColor = players[currentPlayer].color;
-  const currentTextColor =
-    players[currentPlayer].name === "黄" ? "#333" : "white";
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const current = players[currentPlayer];
+  const currentTextColor = current.name === "黄" ? "#333" : "white";
 
   return (
     <main style={styles.main}>
@@ -103,7 +146,7 @@ export default function Home() {
         </div>
 
         <div style={styles.selectGroup}>
-          <div style={styles.label}>制限時間</div>
+          <div style={styles.label}>持ち時間</div>
           <div style={styles.buttonRow}>
             {TIME_OPTIONS.map((limit) => (
               <button
@@ -121,43 +164,64 @@ export default function Home() {
         </div>
       </div>
 
-      <div style={styles.timer}>
-        {minutes}:{seconds.toString().padStart(2, "0")}
-      </div>
+      {winner === null ? (
+        <>
+          <div
+            style={{
+              ...styles.current,
+              background: current.color,
+              color: currentTextColor,
+            }}
+          >
+            現在：{current.name}プレイヤー
+          </div>
 
-      <div
-        style={{
-          ...styles.current,
-          background: currentColor,
-          color: currentTextColor,
-        }}
-      >
-        現在：{players[currentPlayer].name}プレイヤー
-      </div>
+          <div style={styles.currentTimer}>{formatTime(times[currentPlayer])}</div>
+        </>
+      ) : (
+        <div
+          style={{
+            ...styles.current,
+            background: players[winner].color,
+            color: players[winner].name === "黄" ? "#333" : "white",
+          }}
+        >
+          {players[winner].name}プレイヤー優勝！
+        </div>
+      )}
 
       <button
         onClick={pressButton}
-        disabled={timeLeft <= 0}
+        disabled={winner !== null}
         style={{
           ...styles.bigButton,
           ...(pressed ? styles.bigButtonPressed : {}),
-          ...(timeLeft <= 0 ? styles.disabledButton : {}),
+          ...(winner !== null ? styles.disabledButton : {}),
         }}
       >
         言えた！
       </button>
 
-      <div style={styles.scores}>
+      <div style={styles.playersArea}>
         {players.map((player, i) => (
           <div
             key={player.name}
             style={{
-              ...styles.scoreCard,
+              ...styles.playerCard,
               background: player.color,
               color: player.name === "黄" ? "#333" : "white",
+              opacity: eliminated[i] ? 0.35 : 1,
+              outline:
+                i === currentPlayer && winner === null
+                  ? "5px solid #222"
+                  : "none",
             }}
           >
-            <div>{player.name}</div>
+            <div style={styles.playerName}>
+              {player.name}
+              {eliminated[i] && " 脱落"}
+            </div>
+            <div style={styles.playerTime}>{formatTime(times[i])}</div>
             <strong>{scores[i]}駅</strong>
           </div>
         ))}
@@ -166,8 +230,6 @@ export default function Home() {
       <button onClick={() => resetGame()} style={styles.resetButton}>
         リセット
       </button>
-
-      {timeLeft <= 0 && <div style={styles.end}>終了！</div>}
     </main>
   );
 }
@@ -179,9 +241,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: 24,
+    gap: 22,
     fontFamily: "sans-serif",
     background: "#f5f5f5",
+    padding: 16,
   },
 
   selectArea: {
@@ -223,16 +286,16 @@ const styles: Record<string, React.CSSProperties> = {
     borderColor: "#222",
   },
 
-  timer: {
-    fontSize: 64,
-    fontWeight: "bold",
-  },
-
   current: {
     fontSize: 28,
     fontWeight: "bold",
     padding: "12px 28px",
     borderRadius: 999,
+  },
+
+  currentTimer: {
+    fontSize: 72,
+    fontWeight: "bold",
   },
 
   bigButton: {
@@ -261,19 +324,29 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "not-allowed",
   },
 
-  scores: {
+  playersArea: {
     display: "flex",
     gap: 12,
     flexWrap: "wrap",
     justifyContent: "center",
   },
 
-  scoreCard: {
+  playerCard: {
     padding: 16,
-    borderRadius: 12,
-    minWidth: 90,
+    borderRadius: 14,
+    minWidth: 115,
     textAlign: "center",
     fontSize: 20,
+  },
+
+  playerName: {
+    fontWeight: "bold",
+  },
+
+  playerTime: {
+    fontSize: 28,
+    fontWeight: "bold",
+    margin: "6px 0",
   },
 
   resetButton: {
@@ -283,11 +356,5 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #999",
     cursor: "pointer",
     background: "white",
-  },
-
-  end: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#d00000",
   },
 };
