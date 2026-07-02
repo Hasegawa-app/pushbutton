@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+type GameMode = "normal" | "special";
+type EventType = "plus" | "minus" | "normal";
+
 const PLAYER_COLORS = [
   { name: "赤", color: "#e53935" },
   { name: "青", color: "#1e88e5" },
@@ -10,8 +13,16 @@ const PLAYER_COLORS = [
 ];
 
 const DEFAULT_TURN_TIME = 15;
-const TURN_TIME_OPTIONS = [20, 30, 45];
+const TURN_TIME_OPTIONS = [30];
+const IS_DEV = process.env.NODE_ENV === "development";
+const LOCK_SECONDS = IS_DEV ? 10 : 15 * 60;
+
 export default function Home() {
+  const [now, setNow] = useState(Date.now());
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [eventMessage, setEventMessage] = useState("");
+  const [eventType, setEventType] = useState<EventType>("normal");
+  const [gameMode, setGameMode] = useState<GameMode>("normal");
   const [playerCount, setPlayerCount] = useState(4);
   const [turnTime, setTurnTime] = useState(DEFAULT_TURN_TIME);
   const [turnTimeLeft, setTurnTimeLeft] = useState(DEFAULT_TURN_TIME);
@@ -23,6 +34,33 @@ export default function Home() {
   const [winner, setWinner] = useState<number | null>(null);
 
   const players = PLAYER_COLORS.slice(0, playerCount);
+  const isLocked = lockedUntil !== null && now < lockedUntil;
+
+  const remainingLockSeconds =
+    lockedUntil !== null ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
+
+  const lockMinutes = Math.floor(remainingLockSeconds / 60);
+  const lockSeconds = remainingLockSeconds % 60;
+
+  useEffect(() => {
+    const saved = localStorage.getItem("lockedUntil");
+    if (saved) {
+      const savedTime = Number(saved);
+      if (Date.now() < savedTime) {
+        setLockedUntil(savedTime);
+      } else {
+        localStorage.removeItem("lockedUntil");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const findNextPlayer = (from: number, eliminatedList = eliminated) => {
     for (let i = 1; i <= playerCount; i++) {
@@ -40,7 +78,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!running || winner !== null) return;
+    if (!running || winner !== null || isLocked) return;
 
     const timer = setInterval(() => {
       setTurnTimeLeft((prev) => {
@@ -52,6 +90,10 @@ export default function Home() {
             const alive = getAlivePlayers(nextEliminated);
 
             if (alive.length === 1) {
+              const lockTime = Date.now() + LOCK_SECONDS * 1000;
+              localStorage.setItem("lockedUntil", String(lockTime));
+              setLockedUntil(lockTime);
+
               setWinner(alive[0]);
               setRunning(false);
               return nextEliminated;
@@ -71,12 +113,21 @@ export default function Home() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [running, currentPlayer, winner, playerCount, eliminated, turnTime]);
+  }, [running, currentPlayer, winner, playerCount, eliminated, turnTime, isLocked]);
 
   const vibrate = () => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       navigator.vibrate(30);
     }
+  };
+
+  const showEvent = (message: string, type: EventType) => {
+    setEventMessage(message);
+    setEventType(type);
+    setTimeout(() => {
+      setEventMessage("");
+      setEventType("normal");
+    }, 1500);
   };
 
   const resetGame = (count = playerCount, time = turnTime) => {
@@ -89,6 +140,8 @@ export default function Home() {
     setRunning(false);
     setPressed(false);
     setWinner(null);
+    setEventMessage("");
+    setEventType("normal");
   };
 
   const changePlayerCount = (count: number) => {
@@ -99,7 +152,41 @@ export default function Home() {
     resetGame(playerCount, time);
   };
 
+  const getRandomTurnTime = () => {
+    if (gameMode !== "special") return turnTime;
+
+    const r = Math.random();
+
+    if (r < 0.05) {
+      showEvent("信号トラブル！次の人 -7秒", "minus");
+      return Math.max(5, turnTime - 7);
+    }
+
+    if (r < 0.1) {
+      showEvent("駆け込み乗車！次の人 -5秒", "minus");
+      return Math.max(5, turnTime - 5);
+    }
+
+    if (r < 0.2) {
+      showEvent("遅延発生！次の人 -3秒", "minus");
+      return Math.max(5, turnTime - 3);
+    }
+
+    if (r < 0.3) {
+      showEvent("臨時列車！次の人 +5秒", "plus");
+      return turnTime + 5;
+    }
+
+    if (r < 0.4) {
+      showEvent("ドクターイエロー！次の人 +7秒", "plus");
+      return turnTime + 7;
+    }
+
+    return turnTime;
+  };
+
   const pressButton = () => {
+    if (isLocked) return;
     if (winner !== null || eliminated[currentPlayer]) return;
 
     vibrate();
@@ -116,7 +203,7 @@ export default function Home() {
     });
 
     setCurrentPlayer(findNextPlayer(currentPlayer));
-    setTurnTimeLeft(turnTime);
+    setTurnTimeLeft(getRandomTurnTime());
   };
 
   const current = players[currentPlayer];
@@ -124,6 +211,32 @@ export default function Home() {
 
   return (
     <main style={styles.main}>
+      <div style={styles.selectGroup}>
+        <div style={styles.label}>モード</div>
+
+        <div style={styles.buttonRow}>
+          <button
+            onClick={() => setGameMode("normal")}
+            style={{
+              ...styles.selectButton,
+              ...(gameMode === "normal" ? styles.selectButtonActive : {}),
+            }}
+          >
+            通常版
+          </button>
+
+          <button
+            onClick={() => setGameMode("special")}
+            style={{
+              ...styles.selectButton,
+              ...(gameMode === "special" ? styles.selectButtonActive : {}),
+            }}
+          >
+            特別版
+          </button>
+        </div>
+      </div>
+
       <div style={styles.selectArea}>
         <div style={styles.selectGroup}>
           <div style={styles.label}>人数</div>
@@ -188,13 +301,31 @@ export default function Home() {
         </div>
       )}
 
+      {eventMessage && (
+        <div
+          style={{
+            ...styles.eventMessage,
+            ...(eventType === "minus" ? styles.minusEvent : {}),
+            ...(eventType === "plus" ? styles.plusEvent : {}),
+          }}
+        >
+          {eventMessage}
+        </div>
+      )}
+
+      {isLocked && (
+        <div style={styles.eventMessage}>
+          次に遊べるまで {lockMinutes}:{String(lockSeconds).padStart(2, "0")}
+        </div>
+      )}
+
       <button
         onClick={pressButton}
-        disabled={winner !== null}
+        disabled={winner !== null || isLocked}
         style={{
           ...styles.bigButton,
           ...(pressed ? styles.bigButtonPressed : {}),
-          ...(winner !== null ? styles.disabledButton : {}),
+          ...(winner !== null || isLocked ? styles.disabledButton : {}),
         }}
       >
         言えた！
@@ -210,9 +341,7 @@ export default function Home() {
               color: player.name === "黄" ? "#333" : "white",
               opacity: eliminated[i] ? 0.35 : 1,
               outline:
-                i === currentPlayer && winner === null
-                  ? "5px solid #222"
-                  : "none",
+                i === currentPlayer && winner === null ? "5px solid #222" : "none",
             }}
           >
             <div style={styles.playerName}>
@@ -282,7 +411,7 @@ const styles: Record<string, React.CSSProperties> = {
   selectButtonActive: {
     background: "#222",
     color: "white",
-    borderColor: "#222",
+    border: "2px solid #222",
   },
 
   current: {
@@ -350,5 +479,22 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #999",
     cursor: "pointer",
     background: "white",
+  },
+
+  eventMessage: {
+    fontSize: 24,
+    fontWeight: "bold",
+    background: "white",
+    padding: "10px 18px",
+    borderRadius: 999,
+    border: "2px solid #222",
+  },
+
+  minusEvent: {
+    color: "red",
+  },
+
+  plusEvent: {
+    color: "blue",
   },
 };
